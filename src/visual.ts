@@ -13,101 +13,152 @@ import ISelectionId = powerbi.visuals.ISelectionId;
 import { VisualSettings } from "./settings";
 
 type Node = {
-  key: string;                 // chave única do caminho (ex.: "0:Eixo 1|1:1.1 ...")
-  value: string;               // texto do nível atual
-  level: number;               // 0,1,2...
-  identity: ISelectionId | null;   // legado (não usamos para selecionar)
-  selectionIds: ISelectionId[];    // TODAS as linhas sob este nó
+  key: string;                // caminho único: "0:Eixo|1:Objetivo|2:Indicador"
+  value: string;              // rótulo do nível atual
+  level: number;              // 0,1,2...
+  identity: ISelectionId | null; // legado; não usamos para selecionar
+  selectionIds: ISelectionId[];  // TODAS as linhas sob este nó (IDs da coluna mais profunda)
   children: Node[];
   parentKey?: string;
 };
 
 export class Visual implements IVisual {
+  // elementos
   private target!: HTMLElement;
   private container!: HTMLElement;
   private titleEl!: HTMLElement;
   private searchWrap!: HTMLDivElement;
   private treeWrap!: HTMLDivElement;
 
+  // host
   private host!: powerbi.extensibility.visual.IVisualHost;
   private selectionManager!: ISelectionManager;
+
+  // settings
   private settings: VisualSettings = new VisualSettings();
 
+  // dados
   private allNodes: Node[] = [];
   private filteredNodes: Node[] = [];
 
-  // expansão por nó
-  private expandedKeys = new Set<string>();
-
-  // seleção estável (evita travamentos)
-  private selectedNodeKeys = new Set<string>();
-
-  // modo single: lembramos o atual para marcar o radio
+  // estado de UI
+  private expandedKeys = new Set<string>();      // nós expandidos
+  private selectedNodeKeys = new Set<string>();  // nós selecionados (estado local)
   private currentSelectedKey: string | null = null;
+
+  // busca preservada entre updates locais
+  private searchQuery: string = "";
+
+  // anti-loop e detecção de troca de contexto
+  private lastAppliedSig: string = "";
+  private allowAutoPick: boolean = false;
+  private lastDataSig: string = "";
 
   constructor(options?: VisualConstructorOptions) {
     this.host = options!.host;
     this.selectionManager = this.host.createSelectionManager();
     this.target = options!.element;
 
-    // Root
+    // root
     this.container = document.createElement("div");
     this.container.className = "hf__root";
     this.target.appendChild(this.container);
 
-    // Title
+    // título
     this.titleEl = document.createElement("div");
     this.titleEl.className = "hf__title";
     this.container.appendChild(this.titleEl);
 
-    // Search
+    // busca
     this.searchWrap = document.createElement("div");
     this.searchWrap.className = "hf__search";
     this.container.appendChild(this.searchWrap);
 
-    // Tree
+    // árvore
     this.treeWrap = document.createElement("div");
     this.treeWrap.className = "hf__tree";
     this.container.appendChild(this.treeWrap);
   }
 
+  // ===================== UPDATE =====================
   public update(options: VisualUpdateOptions): void {
-  const dataView = options.dataViews && options.dataViews[0];
-  if (!dataView) return;
+    const dv = options.dataViews && options.dataViews[0];
+    if (!dv) {
+      // não emita clear aqui; apenas saia
+      return;
+    }
 
-  // ⚠️ Só parseia quando há objetos; caso contrário, preserva o estado atual
-  if (dataView.metadata?.objects) {
-    this.settings = VisualSettings.parse<VisualSettings>(dataView, this.settings);
-  }
+    // 1) formatação: só parseia quando há objects (evita reset transitório)
+    if (dv.metadata?.objects) {
+      this.settings = VisualSettings.parse<VisualSettings>(dv, this.settings);
+    }
 
-  // aplique aqui o que usa settings (fonte, título etc)
-  this.container.style.fontSize = `${this.settings.itemText.fontSize}px`;
-  this.titleEl.style.display = this.settings.title.show ? "block" : "none";
-  this.titleEl.textContent = this.settings.title.text;
-  this.titleEl.style.fontSize = `${this.settings.title.fontSize}px`;
+    // 2) aplica fonte/título
+    this.container.style.fontSize = `${this.settings.itemText.fontSize}px`;
+    this.titleEl.style.display = this.settings.title.show ? "block" : "none";
+    this.titleEl.textContent = this.settings.title.text;
+    this.titleEl.style.fontSize = `${this.settings.title.fontSize}px`;
 
-    // Search
+    // 3) reconstrói a árvore com o DataView já filtrado por outros visuais
+    this.allNodes = this.buildTree(dv);
+
+    // 4) detecta troca de contexto (ex.: Estado mudou)
+    const newSig = this.dataSignature(this.allNodes);
+    const dataChanged = newSig !== this.lastDataSig;
+    this.lastDataSig = newSig;
+
+    // 5) aplica a busca atual; se zera por causa do novo contexto, limpe a busca
+    const q = this.searchQuery.trim().toLowerCase();
+    this.filteredNodes = q ? this.filterTree(this.allNodes, q) : this.allNodes;
+
+    if (dataChanged && q && this.filteredNodes.length === 0) {
+      // busca antiga não tem resultados no novo contexto → limpar e reiniciar
+      this.searchQuery = "";
+      this.filteredNodes = this.allNodes;
+      this.expandedKeys.clear();
+      // NÃO zere selectedNodeKeys aqui; deixe o contexto refletir o host
+      this.currentSelectedKey = null;
+      // não mexa em lastAppliedSig aqui; não vamos emitir seleção em update
+    }
+
+    // 6) desenha a barra de busca (reflete this.searchQuery)
     this.renderSearch();
 
-    // Data -> Tree (sem duplicatas; com selectionIds)
-    this.allNodes = this.buildTree(dataView);
-    this.filteredNodes = this.allNodes;
+    // 7) poda estados para chaves que ainda existem
+    const presentKeys = new Set<string>();
+    this.walkNodes(this.filteredNodes, n => presentKeys.add(n.key));
 
-    // abra raízes pelo menos uma vez
+    for (const k of Array.from(this.expandedKeys)) {
+      if (!presentKeys.has(k)) this.expandedKeys.delete(k);
+    }
+    for (const k of Array.from(this.selectedNodeKeys)) {
+      if (!presentKeys.has(k)) this.selectedNodeKeys.delete(k);
+    }
+    if (this.currentSelectedKey && !presentKeys.has(this.currentSelectedKey)) {
+      this.currentSelectedKey = null;
+    }
+
+    // 8) garanta raízes abertas ao menos uma vez
     if (this.expandedKeys.size === 0) {
       this.filteredNodes.forEach(r => this.expandedKeys.add(r.key));
     }
 
-    // Render
+    // 9) render e sincronização — sem auto-pick e sem emitir seleção em update externo
     this.renderTree();
-    this.ensureSingleSelected();
-    this.applySelection();
+    this.ensureSingleSelected(false);
+    this.applySelection(false);
   }
 
-  // ---------------- helpers ----------------
-
+  // ===================== HELPERS =====================
   private clearElement(el: HTMLElement): void {
     while (el.firstChild) el.removeChild(el.firstChild);
+  }
+
+  private walkNodes(list: Node[], fn: (n: Node) => void): void {
+    for (const n of list) {
+      fn(n);
+      if (n.children?.length) this.walkNodes(n.children, fn);
+    }
   }
 
   private isSelectable(node: Node): boolean {
@@ -126,10 +177,6 @@ export class Visual implements IVisual {
     return null;
   }
 
-  private nodeIsSelected(nodeKey: string): boolean {
-    return this.selectedNodeKeys.has(nodeKey);
-  }
-
   private collectSelectedIds(): ISelectionId[] {
     const bag: ISelectionId[] = [];
     const walk = (list: Node[]) => {
@@ -144,44 +191,78 @@ export class Visual implements IVisual {
     return bag;
   }
 
-  // aplica uma seleção completa (sem merge) → evita resíduos/travamentos
-  private applySelection(): void {
+  private selectionSignature(keys: Set<string>): string {
+    const arr = Array.from(keys).sort();
+    return arr.join("|");
+  }
+
+  private dataSignature(nodes: Node[]): string {
+    const roots = nodes.map(n => `${n.level}:${n.value}`).sort();
+    return roots.join("||");
+  }
+
+  /**
+   * Aplica seleção ao host:
+   * - Em update externo (force=false) e seleção local vazia → NÃO limpa o host.
+   * - Em ações do usuário (force=true) → "quem clicou manda": replace (merge=false).
+   */
+  private applySelection(force = false): void {
+    const sig = this.selectionSignature(this.selectedNodeKeys);
     const all = this.collectSelectedIds();
-    if (all.length === 0) {
-      void this.selectionManager.clear();
-    } else {
-      void this.selectionManager.select(all, false);
-    }
+
+    if (!force) {
+        // update externo → não emitir/limpar
+        if (sig === this.lastAppliedSig) return;
+        if (sig === "") { this.lastAppliedSig = sig; return; }
+        }
+
+        // Daqui pra baixo, é ação do usuário
+        if (all.length === 0) {
+        void this.selectionManager.clear(); // limpa somente a seleção DESTA instância
+        } else {
+        // substitui a seleção DESTA instância; outras visuais permanecem filtradas
+        void this.selectionManager.select(all, /* multiSelect */ false);
+        }
+        this.lastAppliedSig = sig;
+
   }
 
-  private ensureSingleSelected(): void {
+  private ensureSingleSelected(allowAutoPick: boolean): void {
     if (!this.settings.behavior.singleSelect) return;
+    if (this.selectedNodeKeys.size > 0) return;
+    if (!allowAutoPick) return;
 
-    if (this.selectedNodeKeys.size === 0) {
-      const first = this.findFirstSelectable(this.filteredNodes);
-      if (first) {
-        this.selectedNodeKeys.add(first.key);
-        this.currentSelectedKey = first.key;
+    const first = this.findFirstSelectable(this.filteredNodes);
+    if (first) {
+      this.selectedNodeKeys.clear();
+      this.selectedNodeKeys.add(first.key);
+      this.currentSelectedKey = first.key;
 
-        // marca radio no DOM
-        const el = this.treeWrap.querySelector<HTMLInputElement>(`input[data-key="${first.key}"]`);
-        if (el) el.checked = true;
-      }
+      const el = this.treeWrap.querySelector<HTMLInputElement>(
+        `input[data-key="${first.key}"]`
+      );
+      if (el) el.checked = true;
     }
   }
 
-  // ---------------- data build (agrupa por caminho) ----------------
-
+  // ===================== BUILD TREE (agrupa por caminho) =====================
   private buildTree(dataView: DataView): Node[] {
     const cat = dataView.categorical?.categories;
-    if (!cat || cat.length === 0) return [];
+    if (!cat || cat.length === 0) {
+      return [];
+    }
 
-    // category base com identity (para gerar SelectionIds)
-    const baseIdx = cat.findIndex(c => Array.isArray((c as any).identity) && (c as any).identity.length > 0);
-    const baseCat = baseIdx >= 0 ? cat[baseIdx] : null;
+    // coluna MAIS PROFUNDA com identity (ex.: Cidade)
+    let deepIdx = -1;
+    for (let i = cat.length - 1; i >= 0; i--) {
+      if (Array.isArray((cat[i] as any).identity) && (cat[i] as any).identity.length > 0) {
+        deepIdx = i;
+        break;
+      }
+    }
+    const baseCat = deepIdx >= 0 ? cat[deepIdx] : null;
 
     const len = cat[0].values.length;
-
     const nodeByPath = new Map<string, Node>();
     const roots: Node[] = [];
     const norm = (v: any) => String(v ?? "");
@@ -225,16 +306,27 @@ export class Visual implements IVisual {
           }
         }
 
+        // IDs SEMPRE da coluna mais profunda (ex.: Cidade)
+        // IDs compostos: todas as categorias até a mais profunda (ex.: Estado + Cidade)
         if (baseCat) {
-          const selId = this.host.createSelectionIdBuilder()
-            .withCategory(baseCat, row)
-            .createSelectionId();
+        const b = this.host.createSelectionIdBuilder();
 
-          // evita duplicar ids (equals disponível nas typings recentes)
-          if (!node.selectionIds.some(s => (s as any).equals ? (s as any).equals(selId) : false)) {
-            node.selectionIds.push(selId);
-          }
+        // deepIdx é o índice da coluna mais profunda com identity
+        // (se já está calculado acima, apenas reutilize; caso contrário, derive como você faz para baseCat)
+        for (let c = 0; c <= deepIdx; c++) {
+            if (cat[c]?.identity) {
+            b.withCategory(cat[c], row);
+            }
         }
+
+        const selId = b.createSelectionId();
+
+        // evita duplicar
+        if (!node.selectionIds.some(s => (s as any).equals ? (s as any).equals(selId) : false)) {
+            node.selectionIds.push(selId);
+        }
+        }
+
 
         parentPath = path;
       }
@@ -243,8 +335,7 @@ export class Visual implements IVisual {
     return roots;
   }
 
-  // ---------------- UI ----------------
-
+  // ===================== SEARCH UI =====================
   private renderSearch(): void {
     this.clearElement(this.searchWrap);
     if (!this.settings.search.show) return;
@@ -259,66 +350,56 @@ export class Visual implements IVisual {
     input.className = "hf__search__input";
     input.placeholder = this.settings.search.placeholder || "Pesquisar...";
     input.style.flex = "1";
+    input.value = this.searchQuery; // preserva entre updates
+
+    const applyQuery = () => {
+      const qNow = this.searchQuery.trim().toLowerCase();
+      this.filteredNodes = qNow ? this.filterTree(this.allNodes, qNow) : this.allNodes;
+
+      if (this.expandedKeys.size === 0) {
+        this.filteredNodes.forEach(r => this.expandedKeys.add(r.key));
+      }
+
+      this.renderTree();
+
+      // ação do usuário: autoritativo + auto-pick em single
+      this.allowAutoPick = true;
+      this.ensureSingleSelected(true);
+      this.applySelection(true);
+      this.allowAutoPick = false;
+    };
 
     input.addEventListener("input", () => {
-        const q = input.value.trim().toLowerCase();
-        if (!q) {
-            this.filteredNodes = this.allNodes;
-        } else {
-            this.filteredNodes = this.filterTree(this.allNodes, q);
-        }
-
-        // abrir raízes no novo conjunto
-        if (this.expandedKeys.size === 0) {
-            this.filteredNodes.forEach(r => this.expandedKeys.add(r.key));
-        }
-
-        this.renderTree();
-        this.ensureSingleSelected();
-        this.applySelection();
+      this.searchQuery = input.value;
+      applyQuery();
     });
 
-    // Botão de limpar
-    // Botão de limpar
-const clearBtn = document.createElement("button");
-clearBtn.textContent = "✕";
-clearBtn.title = "Limpar filtro e seleção";
-clearBtn.style.cursor = "pointer";
+    // Botão Limpar (em single-select escolhe o primeiro)
+    const clearBtn = document.createElement("button");
+    clearBtn.textContent = "✕";
+    clearBtn.title = "Limpar filtro e seleção";
+    clearBtn.style.cursor = "pointer";
+    clearBtn.addEventListener("click", () => {
+      this.searchQuery = "";
+      input.value = "";
+      this.filteredNodes = this.allNodes;
 
-clearBtn.addEventListener("click", () => {
-  // 1) limpa texto e restaura a lista
-  input.value = "";
-  this.filteredNodes = this.allNodes;
+      this.expandedKeys.clear();
+      this.selectedNodeKeys.clear();
+      this.currentSelectedKey = null;
 
-  // (opcional) garantir raízes abertas
-  if (this.expandedKeys.size === 0) {
-    this.filteredNodes.forEach(r => this.expandedKeys.add(r.key));
-  }
+      this.renderTree();
 
-  // 2) zera seleção atual
-  this.selectedNodeKeys.clear();
-  this.currentSelectedKey = null;
-
-  // 3) se for seleção única, escolhe o primeiro selecionável
-  if (this.settings.behavior.singleSelect) {
-    const first = this.findFirstSelectable(this.filteredNodes);
-    if (first) {
-      this.selectedNodeKeys.add(first.key);
-      this.currentSelectedKey = first.key; // só para refletir no rádio
-    }
-  }
-
-  // 4) re-render e aplica a seleção completa
-  this.renderTree();
-  this.applySelection();
-});
-
+      this.allowAutoPick = true;       // ação do usuário
+      this.ensureSingleSelected(true); // single → seleciona o primeiro
+      this.applySelection(true);       // autoritativo
+      this.allowAutoPick = false;
+    });
 
     wrap.appendChild(input);
     wrap.appendChild(clearBtn);
     this.searchWrap.appendChild(wrap);
-}
-
+  }
 
   private filterTree(nodes: Node[], q: string): Node[] {
     const match = (v: string) => v.toLowerCase().indexOf(q) !== -1;
@@ -329,7 +410,7 @@ clearBtn.addEventListener("click", () => {
         .map(child => dfs(child))
         .filter((x): x is Node => !!x);
 
-      if (matched || children.length > 0) {
+    if (matched || children.length > 0) {
         return { ...node, children };
       }
       return null;
@@ -343,6 +424,7 @@ clearBtn.addEventListener("click", () => {
     return res;
   }
 
+  // ===================== RENDER TREE =====================
   private renderTree(): void {
     this.clearElement(this.treeWrap);
 
@@ -354,7 +436,7 @@ clearBtn.addEventListener("click", () => {
       row.className = "hf__row";
       row.style.paddingLeft = `${node.level * (this.settings.itemText.indent || 14)}px`;
 
-      // caret
+      // caret (expande/colapsa)
       if (node.children?.length) {
         const caret = document.createElement("span");
         caret.className = "hf__caret";
@@ -364,8 +446,7 @@ clearBtn.addEventListener("click", () => {
           if (isExpanded) this.expandedKeys.delete(node.key);
           else this.expandedKeys.add(node.key);
           this.renderTree();
-          this.ensureSingleSelected();
-          this.applySelection();
+          // nada de seleção aqui
         });
         row.appendChild(caret);
       } else {
@@ -374,7 +455,7 @@ clearBtn.addEventListener("click", () => {
         row.appendChild(spacer);
       }
 
-      // input (checkbox/radio)
+      // input (checkbox ou radio)
       const showInput = this.isSelectable(node);
       const inputType = this.settings.behavior.singleSelect ? "radio" : "checkbox";
       let inputEl: HTMLInputElement | null = null;
@@ -386,9 +467,7 @@ clearBtn.addEventListener("click", () => {
         inp.className = "hf__chk";
         inp.dataset.key = node.key;
 
-        // estado visual com base no set
-        inp.checked = this.nodeIsSelected(node.key);
-
+        inp.checked = this.selectedNodeKeys.has(node.key);
         inputEl = inp;
         row.appendChild(inp);
       }
@@ -402,9 +481,15 @@ clearBtn.addEventListener("click", () => {
 
       container.appendChild(row);
 
-      // seleção
+      // clique/seleção
       if (showInput) {
         const toggleAndApply = () => {
+          // seleção única: clicar no já selecionado não faz nada
+          if (this.settings.behavior.singleSelect && this.selectedNodeKeys.has(node.key)) {
+            if (inputEl) inputEl.checked = true;
+            return;
+          }
+
           if (this.settings.behavior.singleSelect) {
             this.selectedNodeKeys.clear();
             this.selectedNodeKeys.add(node.key);
@@ -421,8 +506,11 @@ clearBtn.addEventListener("click", () => {
           if (inputEl!.type === "radio") inputEl!.checked = true;
           else inputEl!.checked = this.selectedNodeKeys.has(node.key);
 
-          // aplica seleção completa (evita resíduos)
-          this.applySelection();
+          // ação do usuário: autoritativa
+          this.allowAutoPick = true;
+          this.ensureSingleSelected(true);
+          this.applySelection(true);
+          this.allowAutoPick = false;
         };
 
         inputEl!.addEventListener("change", toggleAndApply);
@@ -430,8 +518,16 @@ clearBtn.addEventListener("click", () => {
         row.addEventListener("click", (e) => {
           const t = (e.target as HTMLElement).tagName.toLowerCase();
           if (t !== "input") {
-            if (inputEl!.type === "radio") inputEl!.checked = true;
-            else inputEl!.checked = !inputEl!.checked;
+            // em rádio, clique no já selecionado não altera
+            if (inputEl!.type === "radio" && this.selectedNodeKeys.has(node.key)) {
+              inputEl!.checked = true;
+              return;
+            }
+            if (inputEl!.type === "radio") {
+              inputEl!.checked = true;
+            } else {
+              inputEl!.checked = !inputEl!.checked;
+            }
             toggleAndApply();
           }
         });
@@ -451,66 +547,67 @@ clearBtn.addEventListener("click", () => {
       }
     };
 
+    // garante que raízes apareçam (se ninguém estiver expandido)
+    if (this.expandedKeys.size === 0) {
+      this.filteredNodes.forEach(r => this.expandedKeys.add(r.key));
+    }
+
     this.filteredNodes.forEach(n => renderNode(n, this.treeWrap));
   }
 
-  // ---------------- painel de formatação ----------------
-
+  // ===================== PAINEL DE FORMATAÇÃO =====================
   public enumerateObjectInstances(
-  options: powerbi.EnumerateVisualObjectInstancesOptions
-): powerbi.VisualObjectInstanceEnumeration {
-  const instances: powerbi.VisualObjectInstance[] = [];
+    options: powerbi.EnumerateVisualObjectInstancesOptions
+  ): powerbi.VisualObjectInstanceEnumeration {
+    const instances: powerbi.VisualObjectInstance[] = [];
 
-  // helper: empurra um objeto SEM selector, fazendo cast para satisfazer o TS
-  const push = (o: any) => {
-    instances.push(o as unknown as powerbi.VisualObjectInstance);
-  };
+    // helper: empurra SEM selector (persistência em nível de visual)
+    const push = (o: any) => { instances.push(o as unknown as powerbi.VisualObjectInstance); };
 
-  switch (options.objectName) {
-    case "title":
-      push({
-        objectName: "title",
-        properties: {
-          show: this.settings.title.show,
-          text: this.settings.title.text,
-          fontSize: this.settings.title.fontSize
-        }
-      });
-      break;
+    switch (options.objectName) {
+      case "title":
+        push({
+          objectName: "title",
+          properties: {
+            show: this.settings.title.show,
+            text: this.settings.title.text,
+            fontSize: this.settings.title.fontSize
+          }
+        });
+        break;
 
-    case "itemText":
-      push({
-        objectName: "itemText",
-        properties: {
-          fontSize: this.settings.itemText.fontSize,
-          wrapWidth: this.settings.itemText.wrapWidth,
-          indent: this.settings.itemText.indent
-        }
-      });
-      break;
+      case "itemText":
+        push({
+          objectName: "itemText",
+          properties: {
+            fontSize: this.settings.itemText.fontSize,
+            wrapWidth: this.settings.itemText.wrapWidth,
+            indent: this.settings.itemText.indent
+          }
+        });
+        break;
 
-    case "search":
-      push({
-        objectName: "search",
-        properties: {
-          show: this.settings.search.show,
-          placeholder: this.settings.search.placeholder
-        }
-      });
-      break;
+      case "search":
+        push({
+          objectName: "search",
+          properties: {
+            show: this.settings.search.show,
+            placeholder: this.settings.search.placeholder
+          }
+        });
+        break;
 
-    case "behavior":
-      push({
-        objectName: "behavior",
-        properties: {
-          leavesOnly: this.settings.behavior.leavesOnly,
-          singleSelect: this.settings.behavior.singleSelect
-        }
-      });
-      break;
+      case "behavior":
+        push({
+          objectName: "behavior",
+          properties: {
+            leavesOnly: this.settings.behavior.leavesOnly,
+            singleSelect: this.settings.behavior.singleSelect
+          }
+        });
+        break;
+    }
+
+    return instances;
   }
-
-  return instances;
-}
-
 }

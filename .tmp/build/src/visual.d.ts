@@ -17,13 +17,24 @@ export declare class Visual implements IVisual {
     private expandedKeys;
     private selectedNodeKeys;
     private currentSelectedKey;
+    private searchQuery;
+    private lastAppliedSig;
+    private allowAutoPick;
+    private lastDataSig;
     constructor(options?: VisualConstructorOptions);
     update(options: VisualUpdateOptions): void;
     private clearElement;
+    private walkNodes;
     private isSelectable;
     private findFirstSelectable;
-    private nodeIsSelected;
     private collectSelectedIds;
+    private selectionSignature;
+    private dataSignature;
+    /**
+     * Aplica seleção ao host:
+     * - Em update externo (force=false) e seleção local vazia → NÃO limpa o host.
+     * - Em ações do usuário (force=true) → "quem clicou manda": replace (merge=false).
+     */
     private applySelection;
     private ensureSingleSelected;
     private buildTree;
