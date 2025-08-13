@@ -15,6 +15,7 @@ export declare class Visual implements IVisual {
     private settings;
     private allNodes;
     private filteredNodes;
+    private currentSelectedKey;
     constructor(options?: VisualConstructorOptions);
     private clearElement;
     private static parseSettings;

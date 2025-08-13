@@ -14,9 +14,14 @@ export declare class SearchSettings {
     show: boolean;
     placeholder: string;
 }
+export declare class BehaviorSettings {
+    leavesOnly: boolean;
+    singleSelect: boolean;
+}
 export declare class VisualSettings {
     title: TitleSettings;
     itemText: ItemTextSettings;
     search: SearchSettings;
+    behavior: BehaviorSettings;
     static parse<T extends VisualSettings>(dataView: DataView, defaults?: T): T;
 }

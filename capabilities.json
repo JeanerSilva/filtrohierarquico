@@ -43,6 +43,19 @@
         "show": { "displayName": "Exibir caixa de busca", "type": { "bool": true } },
         "placeholder": { "displayName": "Placeholder", "type": { "text": true } }
       }
+    },
+    "behavior": {
+    "displayName": "Comportamento",
+    "properties": {
+        "leavesOnly": {
+        "displayName": "Selecionar apenas folhas",
+        "type": { "bool": true }
+        },
+        "singleSelect": {
+        "displayName": "Seleção única",
+        "type": { "bool": true }
+        }
+    }
     }
   }
 }
