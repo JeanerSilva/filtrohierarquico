@@ -8,18 +8,15 @@
   box-sizing: border-box;
   padding: 6px;
 }
-
 .hf__title {
   font-weight: 600;
   margin-bottom: 6px;
   white-space: normal;
   word-break: break-word;
 }
-
 .hf__search {
   margin-bottom: 6px;
 }
-
 .hf__search__input {
   width: 100%;
   box-sizing: border-box;
@@ -28,13 +25,11 @@
   border-radius: 4px;
   outline: none;
 }
-
 .hf__tree {
   flex: 1 1 auto;
   overflow: auto;
   padding-right: 2px;
 }
-
 .hf__row {
   display: flex;
   align-items: flex-start;
@@ -42,21 +37,23 @@
   margin: 2px 0;
   cursor: pointer;
 }
-
 .hf__chk {
   margin-top: 2px;
   flex: 0 0 auto;
 }
-
 .hf__lbl {
   line-height: 1.25;
-  white-space: normal;        /* permite quebra */
-  word-break: break-word;     /* quebra palavras longas */
-  overflow-wrap: anywhere;    /* garante quebra em textos enormes */
+  white-space: normal;
+  /* permite quebra */
+  word-break: break-word;
+  /* quebra palavras longas */
+  overflow-wrap: anywhere;
+  /* garante quebra em textos enormes */
   display: inline-block;
   flex: 1 1 auto;
 }
-
 .hf__kids {
-  margin-left: 0; /* recuo é aplicado inline por nível */
+  margin-left: 0;
+  /* recuo é aplicado inline por nível */
 }
+

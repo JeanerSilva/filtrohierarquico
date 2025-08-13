@@ -1,79 +1,48 @@
 {
-    "dataRoles": [
-        {
-            "displayName": "Category Data",
-            "name": "category",
-            "kind": "Grouping"
-        },
-        {
-            "displayName": "Measure Data",
-            "name": "measure",
-            "kind": "Measure"
+  "privileges": [],
+
+  "dataRoles": [
+    {
+      "name": "hierarchy",
+      "kind": "Grouping",
+      "displayName": "Hierarquia (vários campos)"
+    }
+  ],
+
+  "dataViewMappings": [
+    {
+      "categorical": {
+        "categories": {
+          "for": { "in": "hierarchy" },
+          "dataReductionAlgorithm": { "top": { "count": 100000 } }
         }
-    ],
-    "objects": {
-        "dataPoint": {
-            "properties": {
-                "defaultColor": {
-                    "type": {
-                        "fill": {
-                            "solid": {
-                                "color": true
-                            }
-                        }
-                    }
-                },
-                "showAllDataPoints": {
-                    "type": {
-                        "bool": true
-                    }
-                },
-                "fill": {
-                    "type": {
-                        "fill": {
-                            "solid": {
-                                "color": true
-                            }
-                        }
-                    }
-                },
-                "fillRule": {
-                    "type": {
-                        "fill": {}
-                    }
-                },
-                 "fontSize": {
-                    "type": {
-                        "formatting": {
-                            "fontSize": true
-                        }
-                    }
-                }
-            }
-        }
+      }
+    }
+  ],
+
+  "objects": {
+    "title": {
+      "displayName": "Título",
+      "properties": {
+        "show": { "displayName": "Exibir", "type": { "bool": true } },
+        "text": { "displayName": "Texto", "type": { "text": true } },
+        "fontSize": { "displayName": "Tamanho da fonte", "type": { "formatting": { "fontSize": true } } }
+      }
     },
-    "dataViewMappings": [
-        {
-            "categorical": {
-                "categories": {
-                    "for": {
-                        "in": "category"
-                    },
-                    "dataReductionAlgorithm": {
-                        "top": {}
-                    }
-                },
-                "values": {
-                    "select": [
-                        {
-                            "bind": {
-                                "to": "measure"
-                            }
-                        }
-                    ]
-                }
-            }
-        }
-    ],
-    "privileges": []
+    "itemText": {
+      "displayName": "Texto dos itens",
+      "properties": {
+        "fontSize": { "displayName": "Tamanho da fonte", "type": { "formatting": { "fontSize": true } } },
+        "wrapWidth": { "displayName": "Largura para quebra (px)", "type": { "numeric": true } },
+        "indent": { "displayName": "Recuo por nível (px)", "type": { "numeric": true } }
+      }
+    },
+    "search": {
+      "displayName": "Busca",
+      "properties": {
+        "show": { "displayName": "Exibir caixa de busca", "type": { "bool": true } },
+        "placeholder": { "displayName": "Placeholder", "type": { "text": true } }
+      }
+    }
+  }
 }

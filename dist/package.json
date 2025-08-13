@@ -1,0 +1,17 @@
+{
+		"version": "1.0.0.0",
+		"author": {"name":"Você","email":"you@example.com"},
+		"resources": [
+			{
+				"resourceId": "rId0",
+				"sourceType": 5,
+				"file": "resources/hierarchicalfilterwithsearchwrapef1b0c7a.pbiviz.json"
+			}
+		],
+		"visual": {"name":"HierarchicalFilter","displayName":"Hierarchical Filter (with Search & Wrap)","guid":"hierarchicalfilterwithsearchwrapef1b0c7a","visualClassName":"Visual","version":"1.0.0.0","description":"Filtro hierárquico com caixa de busca, quebra de linha e controle de fonte","supportUrl":"https://example.com/support","gitHubUrl":"https://example.com/repo"},
+		"metadata": {
+			"pbivizjson": {
+				"resourceId": "rId0"
+			}
+		}
+	}
