@@ -206,26 +206,21 @@ export class Visual implements IVisual {
    * - Em update externo (force=false) e seleção local vazia → NÃO limpa o host.
    * - Em ações do usuário (force=true) → "quem clicou manda": replace (merge=false).
    */
-  private applySelection(force = false): void {
-    const sig = this.selectionSignature(this.selectedNodeKeys);
-    const all = this.collectSelectedIds();
+  private applySelection(force = false) {
+    const ids = this.collectSelectedIds();
 
     if (!force) {
         // update externo → não emitir/limpar
-        if (sig === this.lastAppliedSig) return;
-        if (sig === "") { this.lastAppliedSig = sig; return; }
-        }
+        return;
+    }
 
-        // Daqui pra baixo, é ação do usuário
-        if (all.length === 0) {
-        void this.selectionManager.clear(); // limpa somente a seleção DESTA instância
-        } else {
-        // substitui a seleção DESTA instância; outras visuais permanecem filtradas
-        void this.selectionManager.select(all, /* multiSelect */ false);
-        }
-        this.lastAppliedSig = sig;
+    if (ids.length === 0) {
+        void this.selectionManager.clear();
+    } else {
+        void this.selectionManager.select(ids, /* multiSelect */ true);
+    }
+    }
 
-  }
 
   private ensureSingleSelected(allowAutoPick: boolean): void {
     if (!this.settings.behavior.singleSelect) return;
@@ -309,23 +304,20 @@ export class Visual implements IVisual {
         // IDs SEMPRE da coluna mais profunda (ex.: Cidade)
         // IDs compostos: todas as categorias até a mais profunda (ex.: Estado + Cidade)
         if (baseCat) {
+        // IDs compostos até o nível do NÓ atual (0..lvl).
+        // Assim: nó de Estado => [Estado]; nó de Cidade => [Estado, Cidade]
         const b = this.host.createSelectionIdBuilder();
 
-        // deepIdx é o índice da coluna mais profunda com identity
-        // (se já está calculado acima, apenas reutilize; caso contrário, derive como você faz para baseCat)
-        for (let c = 0; c <= deepIdx; c++) {
-            if (cat[c]?.identity) {
+        for (let c = 0; c <= lvl; c++) {
             b.withCategory(cat[c], row);
-            }
         }
 
         const selId = b.createSelectionId();
-
-        // evita duplicar
-        if (!node.selectionIds.some(s => (s as any).equals ? (s as any).equals(selId) : false)) {
+            if (!node.selectionIds.some(s => (s as any).equals ? (s as any).equals(selId) : false)) {
             node.selectionIds.push(selId);
+            }
         }
-        }
+
 
 
         parentPath = path;
