@@ -242,90 +242,81 @@ export class Visual implements IVisual {
 
   // ===================== BUILD TREE (agrupa por caminho) =====================
   private buildTree(dataView: DataView): Node[] {
-    const cat = dataView.categorical?.categories;
-    if (!cat || cat.length === 0) {
-      return [];
-    }
-
-    // coluna MAIS PROFUNDA com identity (ex.: Cidade)
-    let deepIdx = -1;
-    for (let i = cat.length - 1; i >= 0; i--) {
-      if (Array.isArray((cat[i] as any).identity) && (cat[i] as any).identity.length > 0) {
-        deepIdx = i;
-        break;
-      }
-    }
-    const baseCat = deepIdx >= 0 ? cat[deepIdx] : null;
-
-    const len = cat[0].values.length;
-    const nodeByPath = new Map<string, Node>();
-    const roots: Node[] = [];
-    const norm = (v: any) => String(v ?? "");
-
-    const pathKeyUpTo = (row: number, lvl: number) => {
-      const parts: string[] = [];
-      for (let i = 0; i <= lvl; i++) parts.push(`${i}:${norm(cat[i].values[row])}`);
-      return parts.join("|");
-    };
-
-    for (let row = 0; row < len; row++) {
-      let parentPath: string | undefined = undefined;
-
-      for (let lvl = 0; lvl < cat.length; lvl++) {
-        const value = norm(cat[lvl].values[row]);
-        const path = pathKeyUpTo(row, lvl);
-
-        let node = nodeByPath.get(path);
-        if (!node) {
-          const legacyIdentity =
-            cat[lvl].identity
-              ? this.host.createSelectionIdBuilder().withCategory(cat[lvl], row).createSelectionId()
-              : null;
-
-          node = {
-            key: path,
-            value,
-            level: lvl,
-            identity: legacyIdentity,
-            selectionIds: [],
-            children: [],
-            parentKey: parentPath
-          };
-          nodeByPath.set(path, node);
-
-          if (lvl === 0) {
-            roots.push(node);
-          } else if (parentPath) {
-            const parent = nodeByPath.get(parentPath);
-            if (parent) parent.children.push(node);
-          }
-        }
-
-        // IDs SEMPRE da coluna mais profunda (ex.: Cidade)
-        // IDs compostos: todas as categorias até a mais profunda (ex.: Estado + Cidade)
-        if (baseCat) {
-        // IDs compostos até o nível do NÓ atual (0..lvl).
-        // Assim: nó de Estado => [Estado]; nó de Cidade => [Estado, Cidade]
-        const b = this.host.createSelectionIdBuilder();
-
-        for (let c = 0; c <= lvl; c++) {
-            b.withCategory(cat[c], row);
-        }
-
-        const selId = b.createSelectionId();
-            if (!node.selectionIds.some(s => (s as any).equals ? (s as any).equals(selId) : false)) {
-            node.selectionIds.push(selId);
-            }
-        }
-
-
-
-        parentPath = path;
-      }
-    }
-
-    return roots;
+  const cat = dataView.categorical?.categories;
+  if (!cat || cat.length === 0) {
+    return [];
   }
+
+  // coluna MAIS PROFUNDA com identity (ex.: Cidade)
+  let deepIdx = -1;
+  for (let i = cat.length - 1; i >= 0; i--) {
+    if (Array.isArray((cat[i] as any).identity) && (cat[i] as any).identity.length > 0) {
+      deepIdx = i;
+      break;
+    }
+  }
+  const baseCat = deepIdx >= 0 ? cat[deepIdx] : null;
+
+  const len = cat[0].values.length;
+  const nodeByPath = new Map<string, Node>();
+  const roots: Node[] = [];
+  const norm = (v: any) => String(v ?? "");
+
+  const pathKeyUpTo = (row: number, lvl: number) => {
+    const parts: string[] = [];
+    for (let i = 0; i <= lvl; i++) parts.push(`${i}:${norm(cat[i].values[row])}`);
+    return parts.join("|");
+  };
+
+  for (let row = 0; row < len; row++) {
+    let parentPath: string | undefined = undefined;
+
+    for (let lvl = 0; lvl < cat.length; lvl++) {
+      const value = norm(cat[lvl].values[row]);
+      const path = pathKeyUpTo(row, lvl);
+
+      let node = nodeByPath.get(path);
+      if (!node) {
+        const legacyIdentity =
+          cat[lvl].identity
+            ? this.host.createSelectionIdBuilder().withCategory(cat[lvl], row).createSelectionId()
+            : null;
+
+        node = {
+          key: path,
+          value,
+          level: lvl,
+          identity: legacyIdentity,
+          selectionIds: [],
+          children: [],
+          parentKey: parentPath
+        };
+        nodeByPath.set(path, node);
+
+        if (lvl === 0) {
+          roots.push(node);
+        } else if (parentPath) {
+          const parent = nodeByPath.get(parentPath);
+          if (parent) parent.children.push(node);
+        }
+      }
+
+      if (baseCat) {
+        const selId = this.host.createSelectionIdBuilder()
+          .withCategory(baseCat, row)
+          .createSelectionId();
+        if (!node.selectionIds.some(s => (s as any).equals ? (s as any).equals(selId) : false)) {
+          node.selectionIds.push(selId);
+        }
+      }
+
+      parentPath = path;
+    }
+  }
+
+  return roots;
+}
+
 
   // ===================== SEARCH UI =====================
   private renderSearch(): void {
