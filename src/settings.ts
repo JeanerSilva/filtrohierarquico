@@ -1,3 +1,4 @@
+// src/settings.ts
 import powerbi from "powerbi-visuals-api";
 import DataView = powerbi.DataView;
 
@@ -8,8 +9,8 @@ export class TitleSettings {
 }
 
 export class ItemTextSettings {
-  public fontSize: number = 12;
-  public wrapWidth: number = 260; // px
+  public fontSize: number = 16;   // controla também a UI (input/botões) via visual.ts
+  public wrapWidth: number = 1260; // px
   public indent: number = 14;     // px por nível
 }
 
@@ -32,45 +33,62 @@ export class VisualSettings {
   public behavior: BehaviorSettings = new BehaviorSettings();
 
   /**
-   * Faz o merge dos objetos do metadata sobre o estado atual.
-   * Se objects vier undefined, mantém `current` (não reseta para defaults).
+   * Faz merge dos objetos do metadata sobre o estado atual.
+   * Se objects vier undefined, NÃO reseta: devolve 'current' intacto.
    */
   static parse<T extends VisualSettings>(dataView: DataView, current?: T): T {
-    const base = (current
-      ? Object.assign(new VisualSettings(), current)
-      : new VisualSettings()) as T;
+  // comece do estado atual (se existir), senão dos defaults
+  const base = (current ? deepClone(current) : (new VisualSettings() as any)) as T;
 
-    const objs = dataView?.metadata?.objects;
-    if (!objs) {
-      // Sem objetos: não sobrescreve o que já está na memória
-      return base;
-    }
+  const objs = dataView?.metadata?.objects;
+  if (!objs) return base; // ← preserva o que já estava setado
 
-    // helper para buscar valor com fallback preservando o tipo
-    const get = <V>(objName: string, prop: string, def: V): V => {
-      const o: any = (objs as any)[objName];
-      const v = o && prop in o ? (o[prop] as V) : undefined;
-      return (v === undefined || v === null) ? def : v;
+    // helpers
+    const has = (o: any, p: string) => o && Object.prototype.hasOwnProperty.call(o, p);
+    const num = (v: any, fallback: number) => {
+      const n = typeof v === "number" ? v : Number(v);
+      return Number.isFinite(n) ? n : fallback;
     };
+    const bool = (v: any, fallback: boolean) =>
+      typeof v === "boolean" ? v : fallback;
+    const text = (v: any, fallback: string) =>
+      typeof v === "string" ? v : (v == null ? fallback : String(v));
 
     // title
-    base.title.show     = get("title",   "show",     base.title.show);
-    base.title.text     = get("title",   "text",     base.title.text);
-    base.title.fontSize = get("title",   "fontSize", base.title.fontSize);
+    if (has(objs, "title")) {
+      const o: any = (objs as any).title;
+      if (has(o, "show"))     base.title.show     = bool(o.show, base.title.show);
+      if (has(o, "text"))     base.title.text     = text(o.text, base.title.text);
+      if (has(o, "fontSize")) base.title.fontSize = num(o.fontSize, base.title.fontSize);
+    }
 
     // itemText
-    base.itemText.fontSize  = get("itemText", "fontSize",  base.itemText.fontSize);
-    base.itemText.wrapWidth = get("itemText", "wrapWidth", base.itemText.wrapWidth);
-    base.itemText.indent    = get("itemText", "indent",    base.itemText.indent);
+    if (has(objs, "itemText")) {
+      const o: any = (objs as any).itemText;
+      if (has(o, "fontSize"))  base.itemText.fontSize  = num(o.fontSize, base.itemText.fontSize);
+      if (has(o, "wrapWidth")) base.itemText.wrapWidth = num(o.wrapWidth, base.itemText.wrapWidth);
+      if (has(o, "indent"))    base.itemText.indent    = num(o.indent, base.itemText.indent);
+    }
 
     // search
-    base.search.show        = get("search", "show",        base.search.show);
-    base.search.placeholder = get("search", "placeholder", base.search.placeholder);
+    if (has(objs, "search")) {
+      const o: any = (objs as any).search;
+      if (has(o, "show"))        base.search.show        = bool(o.show, base.search.show);
+      if (has(o, "placeholder")) base.search.placeholder = text(o.placeholder, base.search.placeholder);
+    }
 
     // behavior
-    base.behavior.leavesOnly  = get("behavior", "leavesOnly",  base.behavior.leavesOnly);
-    base.behavior.singleSelect = get("behavior", "singleSelect", base.behavior.singleSelect);
+    if (has(objs, "behavior")) {
+      const o: any = (objs as any).behavior;
+      if (has(o, "leavesOnly"))  base.behavior.leavesOnly  = bool(o.leavesOnly, base.behavior.leavesOnly);
+      if (has(o, "singleSelect")) base.behavior.singleSelect = bool(o.singleSelect, base.behavior.singleSelect);
+    }
 
     return base;
   }
+}
+
+/** clone raso suficiente para nosso objeto plano */
+function deepClone<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
 }

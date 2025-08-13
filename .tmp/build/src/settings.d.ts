@@ -15,7 +15,9 @@ export declare class SearchSettings {
     placeholder: string;
 }
 export declare class BehaviorSettings {
+    /** Se true, apenas folhas podem ser selecionadas */
     leavesOnly: boolean;
+    /** Se true, força seleção única (sempre 1 item selecionado) */
     singleSelect: boolean;
 }
 export declare class VisualSettings {
@@ -23,5 +25,9 @@ export declare class VisualSettings {
     itemText: ItemTextSettings;
     search: SearchSettings;
     behavior: BehaviorSettings;
-    static parse<T extends VisualSettings>(dataView: DataView, defaults?: T): T;
+    /**
+     * Faz merge dos objetos do metadata sobre o estado atual.
+     * Se objects vier undefined, NÃO reseta: devolve 'current' intacto.
+     */
+    static parse<T extends VisualSettings>(dataView: DataView, current?: T): T;
 }

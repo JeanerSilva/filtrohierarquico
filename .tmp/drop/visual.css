@@ -30,16 +30,49 @@
   height: 24px;
   font-size: 12px;
 }
+/* tudo passa a herdar do .hf__root (que recebe o tamanho via inline style) */
+.hf__search__input,
+.hf__btn,
+.hf__label,
+.hf__levelsel,
+.hf__caret,
+.hf__lbl {
+  font-size: inherit;
+}
+.hf__root {
+  font-family: "Segoe UI", Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+  min-height: 0;
+}
+.hf__tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+.hf__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0;
+  cursor: pointer;
+}
 .hf__caret {
   width: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   user-select: none;
-  margin-right: 4px;
+  cursor: pointer;
+  margin-right: 2px;
 }
 .hf__caret.--empty {
+  width: 14px;
   cursor: default;
 }
 

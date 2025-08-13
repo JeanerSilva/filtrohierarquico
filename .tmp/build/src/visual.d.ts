@@ -1,6 +1,5 @@
-import "core-js/stable";
-import "./../style/visual.less";
 import powerbi from "powerbi-visuals-api";
+import "./../style/visual.less";
 import IVisual = powerbi.extensibility.visual.IVisual;
 import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
 import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
@@ -15,15 +14,21 @@ export declare class Visual implements IVisual {
     private settings;
     private allNodes;
     private filteredNodes;
+    private expandedKeys;
+    private selectedNodeKeys;
     private currentSelectedKey;
     constructor(options?: VisualConstructorOptions);
+    update(options: VisualUpdateOptions): void;
     private clearElement;
-    private static parseSettings;
+    private isSelectable;
+    private findFirstSelectable;
+    private nodeIsSelected;
+    private collectSelectedIds;
+    private applySelection;
+    private ensureSingleSelected;
     private buildTree;
     private renderSearch;
     private filterTree;
     private renderTree;
-    private blankSelector;
-    update(options: VisualUpdateOptions): void;
     enumerateObjectInstances(options: powerbi.EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration;
 }
