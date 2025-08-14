@@ -187,7 +187,8 @@ export class Visual implements IVisual {
         if (n.children?.length) walk(n.children);
       }
     };
-    walk(this.filteredNodes);
+    // Use ALL nodes so search/expand state doesn't affect what gets filtered
+    walk(this.allNodes);
     return bag;
   }
 
@@ -217,7 +218,7 @@ export class Visual implements IVisual {
     if (ids.length === 0) {
         void this.selectionManager.clear();
     } else {
-        void this.selectionManager.select(ids, /* multiSelect */ true);
+        this.selectionManager.select(ids, /* multiSelect */ false);
     }
     }
 

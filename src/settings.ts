@@ -3,7 +3,7 @@ import powerbi from "powerbi-visuals-api";
 import DataView = powerbi.DataView;
 
 export class TitleSettings {
-  public show: boolean = true;
+  public show: boolean = false;
   public text: string = "Filtro";
   public fontSize: number = 14;
 }
@@ -21,9 +21,9 @@ export class SearchSettings {
 
 export class BehaviorSettings {
   /** Se true, apenas folhas podem ser selecionadas */
-  public leavesOnly: boolean = false;
+  public leavesOnly: boolean = true;
   /** Se true, força seleção única (sempre 1 item selecionado) */
-  public singleSelect: boolean = false;
+  public singleSelect: boolean = true;
 }
 
 export class VisualSettings {
